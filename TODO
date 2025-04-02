@@ -1,0 +1,74 @@
+# TODO.md
+
+## Immediate Infrastructure Setup
+
+- [ ] Set up Kubernetes cluster with custom schedulers for GPU workloads
+- [ ] Deploy Kafka 3.6.0 in KRaft mode with 5-node quorum
+- [ ] Configure mTLS and SASL/SCRAM for Kafka security
+- [ ] Deploy PostgreSQL 15 with synchronous replication for core services
+- [ ] Set up S3-compatible object storage for artifacts and checkpoints
+- [ ] Deploy Redis cluster for online feature store
+- [ ] Configure monitoring stack with Prometheus and OpenTelemetry
+
+## Phase 1: Core Data Pipeline
+
+- [ ] Implement Schema Registry with Avro support
+- [ ] Develop Go Kafka client with middleware pattern
+- [ ] Set up Apache Flink 1.18.0 with RocksDB state backend
+- [ ] Implement data quality validation with Great Expectations
+- [ ] Configure dead-letter queues for validation failures
+- [ ] Set up ClickHouse for validation metrics storage
+
+## Phase 2: Feature Engineering & Storage
+
+- [ ] Develop Feature Registry backend with Go/Gin and gRPC API
+- [ ] Implement PostgreSQL temporal tables for feature versioning
+- [ ] Configure Redis for online feature storage with appropriate modules
+- [ ] Set up Delta Lake 3.0.0 on S3 for offline feature store
+- [ ] Implement feature retrieval service with parallel processing
+- [ ] Develop two-level caching mechanism for feature service
+
+## Phase 3: ML Training & Serving
+
+- [ ] Deploy MLflow 2.9.0 with PostgreSQL and S3 storage
+- [ ] Implement custom MLflow plugins for distributed HPO with Ray
+- [ ] Integrate LLMs to suggest hyperparameter configurations based on previous experiments and research, enhancing the efficiency of HPO process
+- [ ] Set up Seldon Core 1.16.0 for model deployment and LLM for understanding model behavior
+- [ ] Integrate ONNX Runtime and TensorRT for model optimization
+- [ ] Develop inference API gateway in Go with circuit breaking
+- [ ] Implement A/B testing infrastructure with Kubernetes CRDs
+
+## Phase 4: Monitoring & Adaptation
+
+- [ ] Implement custom Go application for continuous model monitoring
+- [ ] Configure Prometheus for long-term metric storage
+- [ ] Set up Argo Workflows 3.5.0 for automated retraining
+- [ ] Implement Flagger 1.30.0 for canary deployments
+- [ ] Develop custom Prometheus queries for ML-specific SLOs
+
+## Phase 5: LLM Integration
+
+- [ ] Develop LLM orchestration engine
+- [ ] Implement vLLM for efficient model serving
+- [ ] Set up Ollama with Gemma3:4b for local deployment
+- [ ] Set up gemini (google.genai) API integration for complex tasks
+- [ ] Set up Qdrant for vector storage with multi-index design
+- [ ] Implement advanced RAG architecture with hybrid search
+
+## Phase 6: Dashboard & UI
+
+- [ ] Develop backend with Go and gRPC APIs
+- [ ] Set up Prometheus for time-series data storage
+- [ ] Implement Svelte frontend
+- [ ] Develop chart.js visualizations
+- [ ] Implement WebSocket support for real-time updates
+- [ ] Develop user-defined dashboard customization
+
+## Phase 7: Inter-Service Communication
+
+- [ ] Implement gRPC communication framework with proto3
+- [ ] Set up bidirectional streaming for real-time updates
+- [ ] Configure service discovery via Kubernetes DNS
+- [ ] Implement NATS JetStream for event broadcasting
+- [ ] Develop custom middleware for authentication and logging
+- [ ] Set up gRPC gateway for REST compatibility
