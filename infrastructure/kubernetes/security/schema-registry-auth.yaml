@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: schema-registry-credentials
+  namespace: drift-ml-data
+type: Opaque
+stringData:
+  basic.properties: |
+    schema.registry.auth.user.info=admin:admin-secret,reader:reader-secret,writer:writer-secret
+    schema.registry.auth.mechanism=BASIC
+    schema.registry.auth.roles=admin,reader,writer
+    schema.registry.auth.role.admin=admin
+    schema.registry.auth.role.reader=reader,admin
+    schema.registry.auth.role.writer=writer,admin
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kafka-schema-registry-credentials
+  namespace: drift-ml-data
+type: Opaque
+stringData:
+  KAFKA_PRODUCER_PASSWORD: "producer-secret"

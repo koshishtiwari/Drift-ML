@@ -1,0 +1,105 @@
+# OpenTelemetry Collector configuration
+mode: deployment
+replicaCount: 2
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    prometheus:
+      config:
+        scrape_configs:
+        - job_name: 'otel-collector'
+          scrape_interval: 10s
+          static_configs:
+          - targets: ['${MY_POD_IP}:8888']
+
+  processors:
+    batch:
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 1800
+    resource:
+      attributes:
+      - key: environment
+        value: "production"
+        action: upsert
+    k8s_attributes:
+      auth_type: "serviceAccount"
+      passthrough: false
+      extract:
+        metadata:
+          - namespace
+          - node
+          - pod_name
+          - pod_uid
+    attributes:
+      actions:
+        - key: app
+          value: "drift-ml"
+          action: insert
+
+  exporters:
+    prometheus:
+      endpoint: 0.0.0.0:8889
+    otlp:
+      endpoint: jaeger-collector:4317
+      tls:
+        insecure: true
+    logging:
+      verbosity: detailed
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, k8s_attributes, attributes, batch]
+        exporters: [otlp, logging]
+      metrics:
+        receivers: [otlp, prometheus]
+        processors: [memory_limiter, resource, k8s_attributes, attributes, batch]
+        exporters: [prometheus, logging]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, k8s_attributes, attributes, batch]
+        exporters: [logging]
+
+resources:
+  limits:
+    cpu: 1
+    memory: 2Gi
+  requests:
+    cpu: 200m
+    memory: 400Mi
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/drift-ml-otel-role"
+
+service:
+  type: ClusterIP
+  ports:
+    otlp-grpc:
+      enabled: true
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    otlp-http:
+      enabled: true
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+    prometheus:
+      enabled: true
+      port: 8889
+      targetPort: 8889
+      protocol: TCP
+
+serviceMonitor:
+  enabled: true
+  namespace: drift-ml-monitoring

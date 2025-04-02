@@ -1,0 +1,369 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: great-expectations-config
+  namespace: drift-ml-data
+data:
+  great_expectations.yml: |
+    # Minimal configuration for Great Expectations
+    datasources:
+      kafka_source:
+        class_name: KafkaDatasource
+        module_name: great_expectations.datasource
+        execution_engine:
+          class_name: KafkaExecutionEngine
+          module_name: great_expectations.execution_engine
+          bootstrap_servers: kafka-broker.drift-ml-data.svc.cluster.local:9092
+          security_protocol: SASL_SSL
+          sasl_mechanism: SCRAM-SHA-512
+          sasl_username: ${KAFKA_USERNAME}
+          sasl_password: ${KAFKA_PASSWORD}
+          consumer_config:
+            group_id: great_expectations
+        data_connectors:
+          default_structured_data_connector:
+            class_name: ConfiguredAssetKafkaDataConnector
+            assets:
+              input_data:
+                topic: input-data-stream
+                schema_registry_url: http://schema-registry.drift-ml-data.svc.cluster.local:8081
+
+    stores:
+      expectations_store:
+        class_name: ExpectationsStore
+        store_backend:
+          class_name: DatabaseStoreBackend
+          connection_string: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql.drift-ml-data.svc.cluster.local:5432/drift_ml
+          table_name: expectations_store
+
+      validations_store:
+        class_name: ValidationsStore
+        store_backend:
+          class_name: DatabaseStoreBackend
+          connection_string: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql.drift-ml-data.svc.cluster.local:5432/drift_ml
+          table_name: validations_store
+
+      metrics_store:
+        class_name: MetricStore
+        store_backend:
+          class_name: DatabaseStoreBackend
+          connection_string: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql.drift-ml-data.svc.cluster.local:5432/drift_ml
+          table_name: metrics_store
+          
+      checkpoint_store:
+        class_name: CheckpointStore
+        store_backend:
+          class_name: DatabaseStoreBackend
+          connection_string: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql.drift-ml-data.svc.cluster.local:5432/drift_ml
+          table_name: checkpoints_store
+
+    data_docs_sites:
+      s3_site:
+        class_name: SiteBuilder
+        store_backend:
+          class_name: TupleS3StoreBackend
+          bucket: artifacts
+          prefix: great_expectations/
+        site_index_builder:
+          class_name: DefaultSiteIndexBuilder
+
+    anonymous_usage_statistics:
+      enabled: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-validator
+  namespace: drift-ml-data
+  labels:
+    app: data-validator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: data-validator
+  template:
+    metadata:
+      labels:
+        app: data-validator
+    spec:
+      containers:
+      - name: data-validator
+        image: python:3.9-slim
+        imagePullPolicy: IfNotPresent
+        command: ["python", "/app/validator.py"]
+        env:
+        - name: KAFKA_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: kafka-sasl-credentials
+              key: client-username
+        - name: KAFKA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-sasl-credentials
+              key: client-password
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-credentials
+              key: user-password
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-credentials
+              key: user-password
+        - name: S3_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: access-key
+        - name: S3_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secret-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/great_expectations/great_expectations.yml
+          subPath: great_expectations.yml
+        - name: app-volume
+          mountPath: /app
+      volumes:
+      - name: config-volume
+        configMap:
+          name: great-expectations-config
+      - name: app-volume
+        configMap:
+          name: validator-code
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: validator-code
+  namespace: drift-ml-data
+data:
+  validator.py: |
+    #!/usr/bin/env python3
+    import os
+    import json
+    import time
+    import logging
+    import traceback
+    from kafka import KafkaConsumer, KafkaProducer
+    import great_expectations as ge
+    from great_expectations.core import ExpectationSuite
+    from great_expectations.core.batch import RuntimeBatchRequest
+    from great_expectations.checkpoint import Checkpoint
+    from great_expectations.checkpoint.types.checkpoint_result import CheckpointResult
+    
+    # Configure logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger("data-validator")
+    
+    def setup_context():
+        """Set up Great Expectations context"""
+        try:
+            context = ge.data_context.DataContext()
+            logger.info("Great Expectations context initialized")
+            return context
+        except Exception as e:
+            logger.error(f"Failed to initialize GE context: {e}")
+            logger.error(traceback.format_exc())
+            raise
+    
+    def setup_kafka():
+        """Set up Kafka producer and consumer"""
+        try:
+            # Configure security
+            security_config = {
+                'security_protocol': 'SASL_SSL',
+                'sasl_mechanism': 'SCRAM-SHA-512',
+                'sasl_plain_username': os.environ.get('KAFKA_USERNAME'),
+                'sasl_plain_password': os.environ.get('KAFKA_PASSWORD'),
+                'ssl_check_hostname': False
+            }
+            
+            bootstrap_servers = 'kafka-broker.drift-ml-data.svc.cluster.local:9092'
+            
+            # Create producer for sending validation results and DLQ messages
+            producer = KafkaProducer(
+                bootstrap_servers=bootstrap_servers,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                **security_config
+            )
+            
+            # Create consumer for input data
+            consumer = KafkaConsumer(
+                'input-data-stream',
+                bootstrap_servers=bootstrap_servers,
+                group_id='data-validator-group',
+                auto_offset_reset='earliest',
+                enable_auto_commit=False,
+                value_deserializer=lambda x: json.loads(x.decode('utf-8')),
+                **security_config
+            )
+            
+            logger.info("Kafka producer and consumer initialized")
+            return producer, consumer
+        except Exception as e:
+            logger.error(f"Failed to initialize Kafka: {e}")
+            logger.error(traceback.format_exc())
+            raise
+    
+    def get_or_create_expectation_suite(context, suite_name):
+        """Get existing or create new expectation suite"""
+        try:
+            try:
+                suite = context.get_expectation_suite(suite_name)
+                logger.info(f"Retrieved existing expectation suite: {suite_name}")
+            except:
+                logger.info(f"Creating new expectation suite: {suite_name}")
+                suite = context.create_expectation_suite(suite_name)
+            
+            return suite
+        except Exception as e:
+            logger.error(f"Error getting/creating expectation suite: {e}")
+            logger.error(traceback.format_exc())
+            raise
+    
+    def validate_message(context, message, suite_name):
+        """Validate a single message against expectations"""
+        try:
+            # Create a runtime batch request from the message
+            batch_request = RuntimeBatchRequest(
+                datasource_name="kafka_source",
+                data_connector_name="default_structured_data_connector",
+                data_asset_name="input_data",
+                runtime_parameters={"batch_data": message},
+                batch_identifiers={"default_identifier_name": "batch_" + str(int(time.time()))}
+            )
+            
+            # Get or create checkpoint
+            checkpoint_name = f"kafka_checkpoint_{suite_name}"
+            try:
+                checkpoint = context.get_checkpoint(checkpoint_name)
+            except:
+                checkpoint = Checkpoint(
+                    name=checkpoint_name,
+                    run_name_template="%Y%m%d-%H%M%S",
+                    expectation_suite_name=suite_name,
+                    action_list=[
+                        {
+                            "name": "store_validation_result",
+                            "action": {"class_name": "StoreValidationResultAction"}
+                        },
+                        {
+                            "name": "store_evaluation_params",
+                            "action": {"class_name": "StoreEvaluationParametersAction"}
+                        },
+                        {
+                            "name": "update_data_docs",
+                            "action": {"class_name": "UpdateDataDocsAction"}
+                        }
+                    ]
+                )
+                context.add_checkpoint(checkpoint=checkpoint)
+            
+            # Run validation
+            checkpoint_result: CheckpointResult = checkpoint.run(
+                batch_request=batch_request,
+                runtime_configuration={"result_format": "COMPLETE"}
+            )
+            
+            validation_result = checkpoint_result.list_validation_results()[0]
+            
+            # Return validation result
+            return {
+                "success": validation_result["success"],
+                "statistics": validation_result["statistics"],
+                "results": validation_result["results"]
+            }
+            
+        except Exception as e:
+            logger.error(f"Error validating message: {e}")
+            logger.error(traceback.format_exc())
+            raise
+    
+    def main():
+        """Main execution function"""
+        try:
+            # Setup
+            context = setup_context()
+            producer, consumer = setup_kafka()
+            
+            # Get or create expectation suite
+            suite_name = "input_data_suite"
+            suite = get_or_create_expectation_suite(context, suite_name)
+            
+            # Process messages
+            logger.info("Starting to consume messages...")
+            for message in consumer:
+                try:
+                    # Extract message value
+                    message_value = message.value
+                    
+                    # Validate the message
+                    validation_result = validate_message(context, message_value, suite_name)
+                    
+                    # Send to appropriate topic based on validation result
+                    if validation_result["success"]:
+                        # If valid, send to validated topic
+                        producer.send('validated-data-stream', message_value)
+                        logger.info(f"Message validated and sent to validated-data-stream: {message.offset}")
+                        
+                        # Also send validation result to metrics topic
+                        producer.send('validation-metrics', {
+                            "topic": message.topic,
+                            "partition": message.partition,
+                            "offset": message.offset,
+                            "timestamp": message.timestamp,
+                            "validation_result": validation_result
+                        })
+                    else:
+                        # If invalid, send to DLQ with validation errors
+                        producer.send('dead-letter-queue', {
+                            "original_message": message_value,
+                            "topic": message.topic,
+                            "partition": message.partition,
+                            "offset": message.offset,
+                            "timestamp": message.timestamp,
+                            "validation_result": validation_result,
+                            "error_type": "validation_failure"
+                        })
+                        logger.warning(f"Validation failed for message at offset {message.offset}")
+                    
+                    # Commit the offset
+                    consumer.commit()
+                    
+                except Exception as e:
+                    # Handle processing error
+                    logger.error(f"Error processing message at {message.offset}: {e}")
+                    # Send to DLQ with processing error
+                    producer.send('dead-letter-queue', {
+                        "original_message": message.value,
+                        "topic": message.topic,
+                        "partition": message.partition,
+                        "offset": message.offset,
+                        "timestamp": message.timestamp,
+                        "error_message": str(e),
+                        "error_type": "processing_error"
+                    })
+                    # Commit so we don't get stuck on the same message
+                    consumer.commit()
+                
+        except KeyboardInterrupt:
+            logger.info("Shutting down data validator")
+        except Exception as e:
+            logger.error(f"Critical error in main loop: {e}")
+            logger.error(traceback.format_exc())
+    
+    if __name__ == "__main__":
+        main()

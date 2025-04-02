@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kafka-sasl-credentials
+  namespace: drift-ml-data
+type: Opaque
+stringData:
+  client-passwords.txt: |
+    admin=admin-secret
+    producer=producer-secret
+    consumer=consumer-secret
+  inter-broker-password.txt: |
+    broker-secret
+  controller-password.txt: |
+    controller-secret
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-user-setup
+  namespace: drift-ml-data
+spec:
+  template:
+    spec:
+      containers:
+      - name: kafka-user-setup
+        image: bitnami/kafka:3.6.0
+        command:
+        - /bin/bash
+        - -c
+        - |
+          kafka-configs.sh --bootstrap-server kafka-broker-0.kafka-broker-headless.drift-ml-data.svc.cluster.local:9092 \
+            --alter --add-config 'SCRAM-SHA-512=[password=admin-secret]' \
+            --entity-type users --entity-name admin
+
+          kafka-configs.sh --bootstrap-server kafka-broker-0.kafka-broker-headless.drift-ml-data.svc.cluster.local:9092 \
+            --alter --add-config 'SCRAM-SHA-512=[password=producer-secret]' \
+            --entity-type users --entity-name producer
+
+          kafka-configs.sh --bootstrap-server kafka-broker-0.kafka-broker-headless.drift-ml-data.svc.cluster.local:9092 \
+            --alter --add-config 'SCRAM-SHA-512=[password=consumer-secret]' \
+            --entity-type users --entity-name consumer
+
+          kafka-acls.sh --bootstrap-server kafka-broker-0.kafka-broker-headless.drift-ml-data.svc.cluster.local:9092 \
+            --add --allow-principal User:producer --operation Write --topic '*'
+
+          kafka-acls.sh --bootstrap-server kafka-broker-0.kafka-broker-headless.drift-ml-data.svc.cluster.local:9092 \
+            --add --allow-principal User:consumer --operation Read --topic '*' --group '*'
+        volumeMounts:
+        - name: sasl-creds
+          mountPath: /opt/bitnami/kafka/config/kafka_jaas.conf
+          subPath: kafka_jaas.conf
+      volumes:
+      - name: sasl-creds
+        secret:
+          secretName: kafka-jaas-config
+      restartPolicy: Never
+  backoffLimit: 3

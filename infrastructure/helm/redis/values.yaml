@@ -1,0 +1,55 @@
+# Redis Cluster configuration for feature store
+architecture: replication
+
+auth:
+  enabled: true
+  existingSecret: redis-credentials
+  existingSecretPasswordKey: redis-password
+
+master:
+  persistence:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: 1000m
+    limits:
+      memory: 6Gi
+      cpu: 2000m
+  configuration: |
+    maxmemory 5gb
+    maxmemory-policy allkeys-lru
+    lazyfree-lazy-eviction yes
+    lazyfree-lazy-expire yes
+    lazyfree-lazy-server-del yes
+    activedefrag yes
+    io-threads 4
+    
+replica:
+  replicaCount: 3
+  persistence:
+    enabled: true
+    size: 20Gi
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 500m
+    limits:
+      memory: 3Gi
+      cpu: 1000m
+      
+sentinel:
+  enabled: true
+  quorum: 2
+  
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: drift-ml-monitoring
+
+networkPolicy:
+  enabled: true
+  ingressNSMatchLabels:
+    name: drift-ml-system

@@ -1,0 +1,198 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: dead-letter-queue
+  namespace: drift-ml-data
+  labels:
+    strimzi.io/cluster: kafka
+spec:
+  partitions: 6
+  replicas: 3
+  config:
+    retention.ms: 604800000  # 7 days
+    cleanup.policy: delete
+    min.insync.replicas: 2
+    compression.type: lz4
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dlq-processor
+  namespace: drift-ml-data
+  labels:
+    app: dlq-processor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dlq-processor
+  template:
+    metadata:
+      labels:
+        app: dlq-processor
+    spec:
+      containers:
+      - name: dlq-processor
+        image: python:3.9-slim
+        imagePullPolicy: IfNotPresent
+        command: ["python", "/app/dlq_processor.py"]
+        env:
+        - name: KAFKA_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: kafka-sasl-credentials
+              key: client-username
+        - name: KAFKA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-sasl-credentials
+              key: client-password
+        - name: CLICKHOUSE_USER
+          valueFrom:
+            secretKeyRef:
+              name: clickhouse-credentials
+              key: username
+        - name: CLICKHOUSE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: clickhouse-credentials
+              key: password
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: app-volume
+          mountPath: /app
+      volumes:
+      - name: app-volume
+        configMap:
+          name: dlq-processor-code
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dlq-processor-code
+  namespace: drift-ml-data
+data:
+  dlq_processor.py: |
+    #!/usr/bin/env python3
+    import os
+    import json
+    import time
+    import logging
+    import traceback
+    from kafka import KafkaConsumer
+    from clickhouse_driver import Client
+    
+    # Configure logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger("dlq-processor")
+    
+    # Initialize ClickHouse client
+    def get_clickhouse_client():
+        return Client(
+            host='clickhouse.drift-ml-data.svc.cluster.local',
+            port=9000,
+            user=os.environ.get('CLICKHOUSE_USER'),
+            password=os.environ.get('CLICKHOUSE_PASSWORD'),
+            database='drift_ml'
+        )
+    
+    # Create tables if they don't exist
+    def setup_clickhouse_tables(client):
+        client.execute('''
+            CREATE TABLE IF NOT EXISTS drift_ml.dlq_messages (
+                topic String,
+                partition Int32,
+                offset Int64,
+                timestamp DateTime64(3),
+                error_type String,
+                error_message String,
+                original_message String,
+                validation_result String,
+                processed_at DateTime64(3) DEFAULT now()
+            )
+            ENGINE = MergeTree()
+            ORDER BY (timestamp, topic, partition, offset)
+            TTL timestamp + INTERVAL 30 DAY
+            SETTINGS index_granularity = 8192
+        ''')
+        
+        logger.info("ClickHouse tables setup complete")
+    
+    # Process DLQ messages
+    def process_dlq_messages():
+        try:
+            # Configure Kafka consumer
+            consumer = KafkaConsumer(
+                'dead-letter-queue',
+                bootstrap_servers='kafka-broker.drift-ml-data.svc.cluster.local:9092',
+                group_id='dlq-processor-group',
+                auto_offset_reset='earliest',
+                enable_auto_commit=False,
+                security_protocol='SASL_SSL',
+                sasl_mechanism='SCRAM-SHA-512',
+                sasl_plain_username=os.environ.get('KAFKA_USERNAME'),
+                sasl_plain_password=os.environ.get('KAFKA_PASSWORD'),
+                value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+            )
+            
+            # Initialize ClickHouse
+            client = get_clickhouse_client()
+            setup_clickhouse_tables(client)
+            
+            logger.info("Starting to process DLQ messages...")
+            
+            # Process messages
+            for message in consumer:
+                try:
+                    msg_value = message.value
+                    
+                    # Extract fields
+                    topic = msg_value.get('topic', '')
+                    partition = msg_value.get('partition', 0)
+                    offset = msg_value.get('offset', 0)
+                    msg_timestamp = msg_value.get('timestamp', int(time.time() * 1000))
+                    error_type = msg_value.get('error_type', 'unknown')
+                    error_message = msg_value.get('error_message', '')
+                    
+                    # Handle different message formats
+                    original_message = json.dumps(msg_value.get('original_message', {}))
+                    validation_result = json.dumps(msg_value.get('validation_result', {}))
+                    
+                    # Convert timestamp to datetime
+                    dt_timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(msg_timestamp/1000))
+                    
+                    # Store in ClickHouse
+                    client.execute(
+                        '''
+                        INSERT INTO drift_ml.dlq_messages 
+                        (topic, partition, offset, timestamp, error_type, error_message, original_message, validation_result)
+                        VALUES
+                        ''',
+                        [(topic, partition, offset, dt_timestamp, error_type, error_message, original_message, validation_result)]
+                    )
+                    
+                    logger.info(f"Processed DLQ message: {topic}/{partition}/{offset}")
+                    
+                    # Commit offset
+                    consumer.commit()
+                    
+                except Exception as e:
+                    logger.error(f"Error processing DLQ message: {e}")
+                    logger.error(traceback.format_exc())
+                    # Still commit to avoid getting stuck
+                    consumer.commit()
+        
+        except KeyboardInterrupt:
+            logger.info("Shutting down DLQ processor")
+        except Exception as e:
+            logger.error(f"Critical error in DLQ processor: {e}")
+            logger.error(traceback.format_exc())
+    
+    if __name__ == "__main__":
+        process_dlq_messages()

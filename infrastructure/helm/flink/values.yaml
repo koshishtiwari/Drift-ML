@@ -1,0 +1,140 @@
+# Flink cluster configuration
+image:
+  repository: apache/flink
+  tag: "1.18.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+jobmanager:
+  replicaCount: 1
+  
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+      
+  highAvailability:
+    enabled: true
+    storageDir: s3://checkpoints/flink/ha
+    
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClassName: "standard"
+    
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9249"
+    
+  livenessProbe:
+    tcpSocket:
+      port: 6123
+    initialDelaySeconds: 30
+    periodSeconds: 60
+    
+  readinessProbe:
+    tcpSocket:
+      port: 6123
+    initialDelaySeconds: 30
+    periodSeconds: 60
+
+  extraVolumeMounts:
+    - name: flink-config
+      mountPath: /opt/flink/conf/flink-conf.yaml
+      subPath: flink-conf.yaml
+    - name: flink-config
+      mountPath: /opt/flink/conf/log4j.properties
+      subPath: log4j.properties
+
+  extraVolumes:
+    - name: flink-config
+      configMap:
+        name: flink-config
+        items:
+          - key: flink-conf.yaml
+            path: flink-conf.yaml
+          - key: log4j.properties
+            path: log4j.properties
+      
+taskmanager:
+  replicaCount: 3
+  
+  resources:
+    requests:
+      cpu: 2000m
+      memory: 4Gi
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+      
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClassName: "standard"
+    
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9249"
+    
+  livenessProbe:
+    tcpSocket:
+      port: 6122
+    initialDelaySeconds: 30
+    periodSeconds: 60
+    
+  readinessProbe:
+    tcpSocket:
+      port: 6122
+    initialDelaySeconds: 30
+    periodSeconds: 60
+
+  extraVolumeMounts:
+    - name: flink-config
+      mountPath: /opt/flink/conf/flink-conf.yaml
+      subPath: flink-conf.yaml
+    - name: flink-config
+      mountPath: /opt/flink/conf/log4j.properties
+      subPath: log4j.properties
+
+  extraVolumes:
+    - name: flink-config
+      configMap:
+        name: flink-config
+        items:
+          - key: flink-conf.yaml
+            path: flink-conf.yaml
+          - key: log4j.properties
+            path: log4j.properties
+
+service:
+  type: ClusterIP
+  
+  ports:
+    jobmanager-rpc:
+      port: 6123
+    jobmanager-blob:
+      port: 6124
+    jobmanager-ui:
+      port: 8081
+      
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: drift-ml-issuer
+    
+  hosts:
+    - host: flink.drift-ml.com
+      paths:
+        - path: /
+          pathType: Prefix
+          
+  tls:
+    - secretName: flink-tls
+      hosts:
+        - flink.drift-ml.com

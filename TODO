@@ -1,6 +1,6 @@
 # TODO.md
 
-## Immediate Infrastructure Setup
+## Phase 0: Immediate Infrastructure Setup
 
 - [ ] Set up Kubernetes cluster with custom schedulers for GPU workloads
 - [ ] Deploy Kafka 3.6.0 in KRaft mode with 5-node quorum
@@ -13,7 +13,7 @@
 ## Phase 1: Core Data Pipeline
 
 - [ ] Implement Schema Registry with Avro support
-- [ ] Develop Go Kafka client with middleware pattern
+- [ ] Develop Kafka client with middleware pattern
 - [ ] Set up Apache Flink 1.18.0 with RocksDB state backend
 - [ ] Implement data quality validation with Great Expectations
 - [ ] Configure dead-letter queues for validation failures
@@ -50,8 +50,8 @@
 
 - [ ] Develop LLM orchestration engine
 - [ ] Implement vLLM for efficient model serving
-- [ ] Set up Ollama with Gemma3:4b for local deployment
-- [ ] Set up gemini (google.genai) API integration for complex tasks
+- [ ] Set up Ollama with Gemma3:4b for local LLM integration
+- [ ] Set up gemini (google.genai) for online LLM API integration
 - [ ] Set up Qdrant for vector storage with multi-index design
 - [ ] Implement advanced RAG architecture with hybrid search
 
