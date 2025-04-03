@@ -1,0 +1,94 @@
+# Drift-ML: Real-time Streaming ML Platform TODO
+
+## 1. Project Setup (Priority: High)
+- [x] Initialize Git repository
+- [x] Set up project structure
+- [x] Create Docker configuration
+- [x] Set up Kubernetes configuration
+- [ ] Configure CI/CD pipeline
+
+## 2. Data Ingestion (Priority: High)
+- [x] Set up Apache Kafka
+- [x] Implement data source connectors
+- [x] Configure schema validation
+- [x] Set up dead-letter queues
+- [x] Implement metrics collection
+
+## 3. Data Processing (Priority: High)
+- [x] Set up Apache Flink
+- [x] Implement data transformation pipelines
+- [x] Configure windowed aggregations
+- [x] Implement join operations with reference data
+- [x] Set up streaming ETL jobs
+
+## 4. Feature Store (Priority: High)
+- [x] Set up Redis for online feature store
+- [x] Set up PostgreSQL/S3 for offline feature store
+- [x] Implement feature computation pipeline
+- [x] Set up feature versioning and metadata
+- [x] Develop feature serving API
+- [x] Ensure point-in-time correctness for training
+
+## 5. Model Training (Priority: Medium)
+- [x] Set up MLflow for experiment tracking
+- [x] Integrate ollama for offline LLM usage
+- [x] Integrate Google's gemini API for online LLM usage
+- [x] Implement custom training pipelines
+- [x] Configure hyperparameter optimization
+- [x] Set up model versioning
+- [x] Implement training metrics collection
+
+## 6. Model Registry (Priority: Medium)
+- [x] Set up MLflow Model Registry
+- [x] Implement model versioning
+- [x] Configure model metadata storage
+- [x] Set up approval workflows
+- [x] Implement model lineage tracking
+
+## 7. Model Serving (Priority: Medium)
+- [x] Set up KServe on Kubernetes
+- [x] Implement REST and gRPC APIs
+- [x] Configure multi-model serving
+- [x] Set up A/B testing capabilities
+- [x] Implement request/response logging
+- [x] Configure batching for efficiency
+
+## 8. Monitoring (Priority: Medium)
+- [x] Set up Prometheus
+- [x] Set up Grafana
+- [ ] Set up Kibana
+- [x] Configure system metrics (CPU, memory, network)
+- [x] Implement ML-specific metrics
+- [x] Set up basic alerting
+- [x] Create performance dashboards
+
+## 9. Orchestration (Priority: High)
+- [x] Set up Apache Airflow
+- [x] Integrate LLM for workflow assistance
+- [x] Implement workflow definitions
+- [x] Configure scheduling capabilities
+- [x] Set up dependency management
+- [x] Implement failure handling and retries
+
+## 10. Security & Governance (Priority: Medium)
+- [x] Implement OAuth2/OIDC authentication
+- [x] Configure TLS encryption
+- [x] Set up database encryption
+- [x] Implement role-based access control
+- [x] Set up data lineage tracking
+- [x] Create feature and model documentation system
+- [x] Implement audit logging
+
+## 11. Testing (Priority: High)
+- [ ] Using LLMs extensively
+- [ ] Create unit tests
+- [ ] Create integration tests
+- [ ] Set up end-to-end system, performance and dataflow testing
+- [ ] Set up continuous testing pipeline
+
+## 12. Documentation (Priority: Low)
+- [ ] Create user guides
+- [ ] Create developer documentation
+- [ ] Create API documentation
+- [ ] Document system architecture
+- [ ] Create troubleshooting guides

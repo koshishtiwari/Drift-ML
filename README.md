@@ -1,50 +1,101 @@
-1. Real-Time Data Ingestion
-High-Throughput Adaptive Streaming: Capable of handling large volumes of data in real-time. Utilizes adaptive algorithms to optimize data flow based on network conditions and system load.
-Low-Latency Processing and Edge Computing Integration: Processes data at the edge to reduce latency and bandwidth usage.
+# Drift-ML Platform
 
-2. Data Processing
-Federated Learning: Enables collaborative model training across decentralized data sources while preserving data privacy.
-Graph-Based Data Processing: Uses graph databases and algorithms for complex data relationships and insights.
+Drift-ML is a streamlined real-time machine learning platform with integrated security features.
 
-3. Model Training and Management
-AutoML: Implements automated machine learning to streamline model selection, hyperparameter tuning, and training and facilitates deployment of models for real-time productions.
-Meta-Learning: Employs meta-learning techniques to improve model performance by learning from previous experiments.
+## Components
+- **Data Ingestion**: Apache Kafka for streaming data
+- **Data Processing**: Apache Flink for stream processing
+- **Feature Store**: Redis (online) and PostgreSQL (offline)
+- **Model Training**: MLflow-based training
+- **Model Registry**: MLflow for model versioning and tracking
+- **Model Serving**: FastAPI-based model server with security
+- **Monitoring**: Prometheus and Grafana
+- **Security**: Authentication, Authorization, Encryption, and Audit Logging
 
-4. Feature Store
-Real-Time Feature Engineering: Generates and updates features in real-time based on incoming data streams.
-Feature Embeddings: Utilizes advanced embedding techniques for high-dimensional feature representation.
+## Running with Docker Compose
 
-5. Model Serving
-Serverless Architecture: Deploys models using serverless computing to automatically scale based on demand.
-Multi-Model Serving: Supports simultaneous serving of multiple models for ensemble predictions and comparisons.
+The simplest way to run Drift-ML is using Docker Compose:
 
-6. Monitoring and Observability
-AI-Driven Monitor: detect, collect and store anomalies in performance and operational system metrics and logs, providing proactive alerts.
+```bash
+cd docker
+docker-compose up -d
+```
 
-7. Drift Detection
-Advanced Statistical Methods: Incorporates cutting-edge statistical techniques for accurate drift detection in real-time.
-Adaptive Drift Detection: Continuously adjusts detection thresholds based on model performance and data characteristics.
-Alert Generation: Generates alerts when data drift is detected, including details about affected features.
+This will start all services including Kafka, Redis, PostgreSQL, MLflow, and others.
 
-8.  User Interface and Experience
-A lightweight custom built hub provides a unified interface for monitoring system health, managing data processes, and visualizing results in real-time. This is the client facing interface.
+## Running with Kubernetes
 
+To deploy Drift-ML on Kubernetes:
 
-9. Automated Model Retraining
-Orchestrated Workflows: Automates the retraining process, including data preprocessing, model training, and deployment.
-Continuous Learning: Implements continuous learning pipelines that update models incrementally with new data.
-Trigger Mechanisms: Initiates retraining based on drift detection alerts or performance degradation.
+1. Build the Docker image:
+```bash
+docker build -t drift-ml:latest .
+```
 
-10. Security and Compliance
-Homomorphic Encryption: Ensures data privacy by allowing computations on encrypted data without decryption.
+2. Apply the Kubernetes configurations:
+```bash
+kubectl apply -f kubernetes/
+```
 
-12. Scalability and Resilience
-Container Orchestration: Manages deployments, scaling, and failover for services.
-Advanced Traffic Management: Ensures efficient routing and load balancing of requests.
-Dynamic Resource Allocation: Automatically adjusts resource allocation based on system load and performance metrics.
-Chaos Engineering: Implements chaos engineering practices to test system resilience and improve fault tolerance.
+3. Check the deployment status:
+```bash
+kubectl get all
+```
 
+## Security Integration
 
-14. Integration and Extensibility
-Microservices Architecture: Adopts a microservices architecture for modular, scalable, and flexible system design.
-API Gateway: Provides a unified API gateway for seamless integration with external systems and services.
+Drift-ML includes a comprehensive security module that provides:
+
+- **Authentication**: JWT-based authentication with password hashing
+- **Authorization**: Role-based access control
+- **Encryption**: Data encryption for sensitive information
+- **Audit Logging**: Comprehensive audit logging for all actions
+
+# Run the security initialization and test script
+./scripts/security_init.py
+
+Security is integrated with:
+- Model serving (complete)
+- Feature store (complete)
+- Data processing (complete)
+
+## Getting Started
+
+1. Default admin credentials:
+   - Username: admin
+   - Password: secure-password
+
+2. Access the API at:
+   - Local: http://localhost:8000
+   - Kubernetes: http://[CLUSTER-IP]:8000
+
+3. Example API calls:
+```bash
+# Get authentication token
+curl -X POST "http://localhost:8000/auth/token" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "secure-password"}'
+
+# Use the token for authenticated requests
+curl -X GET "http://localhost:8000/features" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Testing
+
+Run the tests with:
+```bash
+pytest
+```
+
+## Documentation
+
+See the `docs/` directory for detailed documentation.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
