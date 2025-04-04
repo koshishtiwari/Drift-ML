@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-processor
+  labels:
+    app: drift-ml
+    component: data-processor
+spec:
+  replicas: 1  # Typically one Flink application per deployment
+  selector:
+    matchLabels:
+      app: drift-ml
+      component: data-processor
+  template:
+    metadata:
+      labels:
+        app: drift-ml
+        component: data-processor
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9249"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: data-processor
+        image: ${REGISTRY}/drift-ml-data-processor:${TAG}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8081
+          name: ui
+        - containerPort: 9249
+          name: metrics
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka:9092"
+        - name: FLINK_JOB_MANAGER_RPC_ADDRESS
+          value: "jobmanager"
+        - name: FLINK_CHECKPOINTS_DIRECTORY
+          value: "file:///flink-data/checkpoints"
+        - name: FLINK_SAVEPOINTS_DIRECTORY
+          value: "file:///flink-data/savepoints"
+        - name: FLINK_PARALLELISM
+          value: "4"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: drift-ml-secrets
+              key: jwt-secret
+        resources:
+          requests:
+            cpu: 1
+            memory: 2Gi
+          limits:
+            cpu: 2
+            memory: 4Gi
+        volumeMounts:
+        - name: flink-data
+          mountPath: /flink-data
+        - name: tmp-data
+          mountPath: /tmp
+      volumes:
+      - name: flink-data
+        persistentVolumeClaim:
+          claimName: flink-data-pvc
+      - name: tmp-data
+        emptyDir: {}

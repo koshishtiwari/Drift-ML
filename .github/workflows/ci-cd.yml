@@ -1,0 +1,186 @@
+name: Drift-ML CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov flake8
+        pip install -r requirements.txt
+    
+    - name: Lint with flake8
+      run: |
+        flake8 src
+    
+    - name: Test with pytest
+      run: |
+        pytest src/tests --cov=src --cov-report=xml
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to DockerHub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Build and push model server
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: driftml/model-server:latest,driftml/model-server:${{ github.sha }}
+        build-args: |
+          COMPONENT=model-server
+    
+    - name: Build and push data processor
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile.flink
+        push: true
+        tags: driftml/data-processor:latest,driftml/data-processor:${{ github.sha }}
+        build-args: |
+          COMPONENT=data-processor
+    
+    - name: Build and push drift detection
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: driftml/drift-detection:latest,driftml/drift-detection:${{ github.sha }}
+        build-args: |
+          COMPONENT=drift-detection
+  
+  deploy-dev:
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'dev'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: dev
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+    
+    - name: Configure Kubernetes context
+      uses: azure/k8s-set-context@v3
+      with:
+        kubeconfig: ${{ secrets.KUBE_CONFIG }}
+    
+    - name: Deploy to dev
+      env:
+        REGISTRY: driftml
+        TAG: ${{ github.sha }}
+        NAMESPACE: drift-ml-dev
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      run: |
+        chmod +x ./deploy.sh
+        ./deploy.sh
+    
+    - name: Verify deployment
+      run: |
+        kubectl rollout status deployment/model-server -n drift-ml-dev --timeout=300s
+        kubectl rollout status deployment/data-processor -n drift-ml-dev --timeout=300s
+        kubectl rollout status deployment/drift-detection -n drift-ml-dev --timeout=300s
+
+  deploy-staging:
+    if: github.event.inputs.environment == 'staging'
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+    
+    - name: Configure Kubernetes context
+      uses: azure/k8s-set-context@v3
+      with:
+        kubeconfig: ${{ secrets.KUBE_CONFIG }}
+    
+    - name: Deploy to staging
+      env:
+        REGISTRY: driftml
+        TAG: ${{ github.sha }}
+        NAMESPACE: drift-ml-staging
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      run: |
+        chmod +x ./deploy.sh
+        ./deploy.sh
+
+  deploy-production:
+    if: github.event.inputs.environment == 'production'
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+    
+    - name: Configure Kubernetes context
+      uses: azure/k8s-set-context@v3
+      with:
+        kubeconfig: ${{ secrets.KUBE_CONFIG }}
+    
+    - name: Deploy to production
+      env:
+        REGISTRY: driftml
+        TAG: ${{ github.sha }}
+        NAMESPACE: drift-ml-production
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      run: |
+        chmod +x ./deploy.sh
+        ./deploy.sh

@@ -1,0 +1,142 @@
+name: Drift-ML CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+env:
+  REGISTRY: docker.io/driftml
+  TEST_TAG: ${{ github.sha }}
+  RELEASE_TAG: latest
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run tests
+        run: |
+          pytest --cov=src tests/
+
+  build:
+    name: Build and Push Docker Images
+    needs: test
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push model server image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile.model-server
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/drift-ml-model-server:${{ env.TEST_TAG }}
+            ${{ env.REGISTRY }}/drift-ml-model-server:${{ env.RELEASE_TAG }}
+
+      - name: Build and push monitoring service image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile.monitoring
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/drift-ml-monitoring:${{ env.TEST_TAG }}
+            ${{ env.REGISTRY }}/drift-ml-monitoring:${{ env.RELEASE_TAG }}
+
+  deploy:
+    name: Deploy to Kubernetes
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    environment: ${{ github.event.inputs.environment || 'development' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+          context: ${{ secrets.K8S_CONTEXT }}
+
+      - name: Set deployment namespace
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+            echo "NAMESPACE=drift-ml-prod" >> $GITHUB_ENV
+          elif [ "${{ github.event.inputs.environment }}" = "staging" ]; then
+            echo "NAMESPACE=drift-ml-staging" >> $GITHUB_ENV
+          else
+            echo "NAMESPACE=drift-ml-dev" >> $GITHUB_ENV
+          fi
+
+      - name: Deploy to Kubernetes
+        run: |
+          export REGISTRY=${{ env.REGISTRY }}
+          export TAG=${{ env.TEST_TAG }}
+          export NAMESPACE=${{ env.NAMESPACE }}
+          export MODE=all
+          
+          # Run the deployment script
+          bash ./deploy.sh
+          
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/model-server --namespace=${{ env.NAMESPACE }} --timeout=300s
+          echo "Deployment successful!"
+
+  monitoring:
+    name: Verify Monitoring
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Check monitoring endpoints
+        run: |
+          # This step would check that monitoring is working properly
+          # For example, by querying Prometheus/Grafana endpoints
+          echo "Verifying monitoring setup..."

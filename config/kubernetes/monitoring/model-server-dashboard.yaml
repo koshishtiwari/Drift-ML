@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: model-server-alerts
+  labels:
+    app: drift-ml
+    component: model-server
+spec:
+  groups:
+  - name: model-server.alerts
+    rules:
+    - alert: HighModelLatency
+      expr: histogram_quantile(0.95, sum(rate(model_prediction_latency_seconds_bucket[5m])) by (le, model_name, model_version)) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: High model latency detected
+        description: "95th percentile latency for model {{ $labels.model_name }} (v{{ $labels.model_version }}) is above 500ms"
+        
+    - alert: ModelServerHighMemory
+      expr: sum(container_memory_usage_bytes{pod=~"model-server-.*"}) / sum(container_spec_memory_limit_bytes{pod=~"model-server-.*"}) > 0.85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: Model server high memory usage
+        description: "Model server memory usage is above 85%"
+        
+    - alert: ModelProcessingBackpressure
+      expr: rate(model_processing_lag_seconds[5m]) > 60
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: Model processing backpressure detected
+        description: "Processing lag for model {{ $labels.model_name }} (v{{ $labels.model_version }}) is high, indicating backpressure"

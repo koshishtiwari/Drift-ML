@@ -219,8 +219,32 @@ class FlinkProcessor:
             properties=props
         )
     
+    def _configure_kafka_source(self) -> None:
+        """Configure Kafka source with backpressure handling."""
+        properties = {
+            'bootstrap.servers': self.kafka_bootstrap_servers,
+            'group.id': f'{self.job_name}_group',
+            'auto.offset.reset': 'earliest',
+            'enable.auto.commit': 'false',
+            # Backpressure handling settings
+            'max.poll.records': '500',  # Limit records per poll
+            'max.poll.interval.ms': '300000',  # 5 minutes
+            'fetch.max.wait.ms': '500',  # Wait time for fetch
+            'heartbeat.interval.ms': '3000',  # Heartbeat to broker
+        }
+        
+        # Max in-flight requests per connection
+        if self.high_throughput_mode:
+            properties['max.in.flight.requests.per.connection'] = '5'
+        else:
+            properties['max.in.flight.requests.per.connection'] = '1'
+        
+        self.kafka_props = properties
+        
+        logger.info(f"Configured Kafka source with backpressure handling")
+
     def build_pipeline(self) -> None:
-        """Build the Flink data processing pipeline."""
+        """Build the Flink data processing pipeline with backpressure management."""
         # Create streams for each input topic
         streams = []
         for topic in self.input_topics:
@@ -257,6 +281,54 @@ class FlinkProcessor:
         stream.add_sink(
             self.create_kafka_producer(self.output_topic)
         ).name(f"Sink: {self.output_topic}")
+        
+        # Configure checkpointing for failure recovery
+        self.env.enable_checkpointing(60000)  # 60 seconds
+        self.env.get_checkpoint_config().set_min_pause_between_checkpoints(30000)  # 30 seconds
+        self.env.get_checkpoint_config().set_checkpoint_timeout(20000)  # 20 seconds
+        self.env.get_checkpoint_config().set_max_concurrent_checkpoints(1)
+        self.env.get_checkpoint_config().set_tolerable_checkpoint_failure_number(3)
+        
+        # Configure restart strategy
+        self.env.get_restart_strategy_configuration().set_restart_strategy_type_from_string("fixed-delay")
+        self.env.get_restart_strategy_configuration().set_restart_attempts(3)
+        self.env.get_restart_strategy_configuration().set_delay_between_attempts_interval_ms(10000)
+        
+        # Set up buffering and latency monitoring for backpressure detection
+        self.env.get_configuration().set_string("pipeline.buffersperview.enabled", "true")
+        self.env.get_configuration().set_string("pipeline.backpressure-monitoring.enabled", "true")
+        
+        # Add output monitoring to detect and log backpressure
+        stream = stream.map(lambda x: self._monitor_backpressure(x))
+        
+    def _monitor_backpressure(self, record):
+        """Monitor and log backpressure situations."""
+        current_time = time.time()
+        if hasattr(self, 'last_backpressure_check_time'):
+            if current_time - self.last_backpressure_check_time > 60:  # Check every minute
+                self.last_backpressure_check_time = current_time
+                
+                # Report processing metrics that can indicate backpressure
+                if hasattr(self, 'records_processed'):
+                    rate = self.records_processed / 60.0  # records per second
+                    logger.info(f"Current processing rate: {rate:.2f} records/sec")
+                    
+                    # Reset counter
+                    self.records_processed = 0
+                    
+                    # If we have previous metrics, check for backpressure
+                    if hasattr(self, 'previous_rate'):
+                        if self.previous_rate > 0 and rate / self.previous_rate < 0.7:
+                            logger.warning(f"Possible backpressure detected: rate dropped from {self.previous_rate:.2f} to {rate:.2f}")
+                    
+                    self.previous_rate = rate
+        else:
+            self.last_backpressure_check_time = current_time
+            self.records_processed = 0
+            self.previous_rate = 0
+        
+        self.records_processed = getattr(self, 'records_processed', 0) + 1
+        return record
     
     def run(self) -> None:
         """Run the Flink job."""

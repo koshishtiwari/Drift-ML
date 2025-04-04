@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drift-detection
+  labels:
+    app: drift-ml
+    component: drift-detection
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: drift-ml
+      component: drift-detection
+  template:
+    metadata:
+      labels:
+        app: drift-ml
+        component: drift-detection
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: drift-detection
+        image: ${REGISTRY}/drift-ml-drift-detection:${TAG}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 8081
+          name: metrics
+        env:
+        - name: REFERENCE_DATA_STORE_URI
+          value: "postgres://postgres:${DB_PASSWORD}@postgres:5432/driftml"
+        - name: PRODUCTION_DATA_STORE_URI
+          value: "redis://redis:6379/0"
+        - name: NOTIFICATION_URI
+          value: "http://alertmanager:9093/api/v1/alerts"
+        - name: ENABLE_BACKGROUND_MONITORING
+          value: "true"
+        - name: MONITORING_INTERVAL_SECONDS
+          value: "300"
+        - name: METRICS_PORT
+          value: "8081"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: drift-ml-secrets
+              key: db-password
+        resources:
+          requests:
+            cpu: 300m
+            memory: 512Mi
+          limits:
+            cpu: 1
+            memory: 1Gi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30

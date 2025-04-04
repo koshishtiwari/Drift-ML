@@ -1,0 +1,12 @@
+server.name: kibana
+server.host: "0.0.0.0"
+elasticsearch.hosts: ["http://elasticsearch:9200"]
+monitoring.ui.container.elasticsearch.enabled: true
+
+xpack.reporting.enabled: true
+xpack.security.enabled: false
+
+elasticsearch.requestTimeout: 90000
+
+# Default index pattern for Drift-ML logs
+kibana.defaultAppId: "discover"

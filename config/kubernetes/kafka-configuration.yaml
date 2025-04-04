@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  labels:
+    app: drift-ml
+    component: kafka
+data:
+  server.properties: |
+    # Broker configuration
+    num.network.threads=3
+    num.io.threads=8
+    socket.send.buffer.bytes=102400
+    socket.receive.buffer.bytes=102400
+    socket.request.max.bytes=104857600
+    
+    # Log configuration
+    num.partitions=8
+    default.replication.factor=3
+    log.retention.hours=168
+    log.segment.bytes=1073741824
+    log.retention.check.interval.ms=300000
+    
+    # Backpressure management
+    replica.fetch.max.bytes=1048576
+    message.max.bytes=1000000
+    
+    # Topic-level configurations
+    # To be applied with:
+    # kafka-topics --alter --topic topic-name --config max.message.bytes=1000000
+    
+    # Metrics
+    auto.create.topics.enable=false
+    delete.topic.enable=true
+    
+    # Zookeeper
+    zookeeper.connect=zookeeper:2181
+    zookeeper.connection.timeout.ms=6000

@@ -606,7 +606,9 @@ class ModelRegistry:
         model_name: str,
         version: str,
         approver: str,
-        comment: Optional[str] = None
+        comment: Optional[str] = None,
+        user_id: Optional[int] = None,
+        auth_token: Optional[str] = None
     ) -> None:
         """
         Approve a model version.
@@ -616,12 +618,53 @@ class ModelRegistry:
             version: Version of the model
             approver: Name of the approver
             comment: Approval comment
+            user_id: ID of the user performing the approval
+            auth_token: Authentication token for the user
+            
+        Raises:
+            PermissionError: If the user is not authorized to approve models
+            ValueError: If model version does not exist
         """
         try:
             # Check if model version exists
             model_version = self.get_model_version(model_name, version)
             if model_version is None:
                 raise ValueError(f"Model version {version} not found for model '{model_name}'")
+            
+            # Verify authorization if security module is available
+            if hasattr(self, 'security') and self.security:
+                if user_id is None and auth_token is None:
+                    raise PermissionError("Authentication required for model approval")
+                
+                # Verify via user_id
+                if user_id is not None:
+                    has_permission = self.security.authz.check_permission(
+                        user_id=user_id,
+                        resource="model",
+                        action="approve"
+                    )
+                    if not has_permission:
+                        raise PermissionError(f"User ID {user_id} does not have permission to approve models")
+                
+                # Verify via token
+                elif auth_token is not None:
+                    token_data = self.security.auth.validate_token(auth_token)
+                    if not token_data:
+                        raise PermissionError("Invalid authentication token")
+                    
+                    token_user_id = token_data.get("sub")
+                    if token_user_id:
+                        has_permission = self.security.authz.check_permission(
+                            user_id=int(token_user_id),
+                            resource="model",
+                            action="approve"
+                        )
+                        if not has_permission:
+                            raise PermissionError("Token does not have permission to approve models")
+                        
+                        # Override approver with authenticated username if available
+                        if token_data.get("username"):
+                            approver = token_data.get("username")
             
             # Add approval tags
             self.add_model_version_tag(
@@ -653,10 +696,30 @@ class ModelRegistry:
                     value=comment
                 )
             
+            # Audit log
+            if hasattr(self, 'security') and self.security:
+                self.security.audit.log_event(
+                    action="approve_model",
+                    resource="model",
+                    resource_id=f"{model_name}/{version}",
+                    user_id=user_id,
+                    details={
+                        "model_name": model_name,
+                        "model_version": version,
+                        "approver": approver,
+                        "comment": comment
+                    }
+                )
+            
             logger.info(f"Approved model '{model_name}' version {version} by {approver}")
-        except Exception as e:
-            logger.error(f"Failed to approve model version: {e}")
+        except (ValueError, PermissionError) as e:
+            # Re-raise expected errors
+            logger.error(f"Model approval error: {e}")
             raise
+        except Exception as e:
+            # For unexpected errors, provide context but still raise
+            logger.error(f"Unexpected error during model approval: {e}")
+            raise RuntimeError(f"Failed to approve model version: {e}") from e
     
     def reject_model_version(
         self,
@@ -814,8 +877,26 @@ class ModelRegistry:
             
         Returns:
             DataFrame comparing the model versions
+            
+        Raises:
+            ValueError: If the model name does not exist
+            ValueError: If any specified version does not exist
         """
+        if not versions:
+            raise ValueError("No model versions specified for comparison")
+            
         try:
+            # Verify model exists
+            model = self.client.get_registered_model(model_name)
+            if not model:
+                raise ValueError(f"Model '{model_name}' does not exist")
+                
+            # Verify all versions exist
+            for version in versions:
+                model_version = self.get_model_version(model_name, version)
+                if model_version is None:
+                    raise ValueError(f"Version {version} of model '{model_name}' does not exist")
+            
             all_metrics = {}
             all_params = {}
             all_tags = {}
@@ -827,9 +908,6 @@ class ModelRegistry:
                 
                 # Get parameters
                 model_version = self.get_model_version(model_name, version)
-                if model_version is None:
-                    continue
-                
                 run_id = model_version["run_id"]
                 run = self.client.get_run(run_id)
                 all_params[version] = run.data.params
@@ -884,9 +962,15 @@ class ModelRegistry:
             df = pd.DataFrame([comparison])
             
             return df
+            
+        except ValueError as e:
+            # Re-raise ValueError for expected error conditions
+            logger.error(f"Model comparison error: {e}")
+            raise
         except Exception as e:
-            logger.error(f"Failed to compare models: {e}")
-            return pd.DataFrame()
+            # For unexpected errors, provide context but still raise
+            logger.error(f"Unexpected error during model comparison: {e}")
+            raise RuntimeError(f"Failed to compare models: {e}") from e
     
     def log_deployment_event(
         self,

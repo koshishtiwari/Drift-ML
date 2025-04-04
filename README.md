@@ -1,101 +1,68 @@
-# Drift-ML Platform
+# Drift-ML: Real-Time Streaming ML Platform
 
-Drift-ML is a streamlined real-time machine learning platform with integrated security features.
+A comprehensive platform for real-time machine learning with streaming data processing, automated feature engineering, and model deployment capabilities.
 
-## Components
-- **Data Ingestion**: Apache Kafka for streaming data
-- **Data Processing**: Apache Flink for stream processing
-- **Feature Store**: Redis (online) and PostgreSQL (offline)
-- **Model Training**: MLflow-based training
-- **Model Registry**: MLflow for model versioning and tracking
-- **Model Serving**: FastAPI-based model server with security
-- **Monitoring**: Prometheus and Grafana
-- **Security**: Authentication, Authorization, Encryption, and Audit Logging
+## Features
 
-## Running with Docker Compose
+- **Data Ingestion**: Stream data collection via Apache Kafka
+- **Data Processing**: Real-time transformations with Apache Flink
+- **Feature Store**: Feature computation and storage with dual Redis/PostgreSQL system
+- **Model Training**: Model development with MLflow and LLM integration
+- **Model Registry**: Version control for ML models
+- **Model Serving**: Deployment and inference via KServe
+- **Monitoring**: System and ML metrics via Prometheus, Grafana, and Kibana
+- **Orchestration**: Workflow automation with Apache Airflow
+- **Security**: Built-in authentication, authorization, and encryption
 
-The simplest way to run Drift-ML is using Docker Compose:
+## Architecture
 
-```bash
-cd docker
-docker-compose up -d
+```
+┌───────────────────┐     ┌───────────────────┐     ┌───────────────────┐
+│                   │     │                   │     │                   │
+│  Data Ingestion   │────▶│  Data Processing  │────▶│   Feature Store   │
+│                   │     │                   │     │                   │
+└───────────────────┘     └───────────────────┘     └─────────┬─────────┘
+                                                              │
+                                                              ▼
+┌───────────────────┐     ┌───────────────────┐     ┌───────────────────┐
+│                   │     │                   │     │                   │
+│   Orchestration   │◀───▶│  Model Training   │◀────│ Feature Retrieval │
+│                   │     │                   │     │                   │
+└─────────┬─────────┘     └───────────────────┘     └───────────────────┘
+          │                         │
+          ▼                         ▼
+┌───────────────────┐     ┌───────────────────┐     ┌───────────────────┐
+│                   │     │                   │     │                   │
+│  Model Registry   │────▶│   Model Serving   │────▶│    Monitoring     │
+│                   │     │                   │     │                   │
+└───────────────────┘     └───────────────────┘     └───────────────────┘
 ```
 
-This will start all services including Kafka, Redis, PostgreSQL, MLflow, and others.
+## Deployment
 
-## Running with Kubernetes
+To deploy the Drift-ML platform, follow these steps:
 
-To deploy Drift-ML on Kubernetes:
+1. **Clone the repository**:
+    ```sh
+    git clone https://github.com/your-repo/drift-ml.git
+    cd drift-ml
+    ```
 
-1. Build the Docker image:
-```bash
-docker build -t drift-ml:latest .
-```
+2. **Set up the environment**:
+    ```sh
+    cp .env.example .env
+    ```
 
-2. Apply the Kubernetes configurations:
-```bash
-kubectl apply -f kubernetes/
-```
+3. **Build and start the services**:
+    ```sh
+    docker-compose up --build
+    ```
 
-3. Check the deployment status:
-```bash
-kubectl get all
-```
+4. **Access the platform**:
+    - The web interface will be available at `http://localhost:8080`
+    - The API will be available at `http://localhost:5000/api`
 
-## Security Integration
-
-Drift-ML includes a comprehensive security module that provides:
-
-- **Authentication**: JWT-based authentication with password hashing
-- **Authorization**: Role-based access control
-- **Encryption**: Data encryption for sensitive information
-- **Audit Logging**: Comprehensive audit logging for all actions
-
-# Run the security initialization and test script
-./scripts/security_init.py
-
-Security is integrated with:
-- Model serving (complete)
-- Feature store (complete)
-- Data processing (complete)
-
-## Getting Started
-
-1. Default admin credentials:
-   - Username: admin
-   - Password: secure-password
-
-2. Access the API at:
-   - Local: http://localhost:8000
-   - Kubernetes: http://[CLUSTER-IP]:8000
-
-3. Example API calls:
-```bash
-# Get authentication token
-curl -X POST "http://localhost:8000/auth/token" \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "secure-password"}'
-
-# Use the token for authenticated requests
-curl -X GET "http://localhost:8000/features" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-## Testing
-
-Run the tests with:
-```bash
-pytest
-```
-
-## Documentation
-
-See the `docs/` directory for detailed documentation.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
+5. **Monitor the services**:
+    - Grafana dashboard: `http://localhost:3000`
+    - Kibana dashboard: `http://localhost:5601`
+    - Prometheus dashboard: `http://localhost:9090`

@@ -18,6 +18,7 @@ from airflow.utils.dates import days_ago
 from airflow.models import Variable, Connection
 from airflow.hooks.base import BaseHook
 from loguru import logger
+from src.orchestration.workflow_config import WorkflowConfig, WorkflowTemplates
 
 class LLMAssistant:
     """LLM assistant for workflow guidance and natural language processing."""
@@ -508,165 +509,22 @@ class WorkflowOrchestrator:
             logger.error(f"Error getting task logs: {e}")
             return f"Error: {str(e)}"
 
-# Example workflow templates for common ML tasks
-class WorkflowTemplates:
-    """Common workflow templates for ML tasks."""
-    
-    @staticmethod
-    def feature_engineering_workflow() -> Dict[str, Any]:
-        """Template for feature engineering workflow."""
-        return {
-            "dag_id": "feature_engineering",
-            "default_args": {
-                "owner": "drift-ml",
-                "retries": 3,
-                "retry_delay_minutes": 5
-            },
-            "schedule_interval": "0 */6 * * *",  # Every 6 hours
-            "tasks": [
-                {
-                    "task_id": "check_data_sources",
-                    "task_type": "python",
-                    "dependencies": [],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "extract_data",
-                    "task_type": "python",
-                    "dependencies": ["check_data_sources"],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "compute_features",
-                    "task_type": "python",
-                    "dependencies": ["extract_data"],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "store_features",
-                    "task_type": "python",
-                    "dependencies": ["compute_features"],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "validate_features",
-                    "task_type": "python",
-                    "dependencies": ["store_features"],
-                    "parameters": {}
-                }
-            ]
-        }
-    
-    @staticmethod
-    def model_training_workflow() -> Dict[str, Any]:
-        """Template for model training workflow."""
-        return {
-            "dag_id": "model_training",
-            "default_args": {
-                "owner": "drift-ml",
-                "retries": 2,
-                "retry_delay_minutes": 10
-            },
-            "schedule_interval": "0 0 * * *",  # Daily at midnight
-            "tasks": [
-                {
-                    "task_id": "prepare_training_data",
-                    "task_type": "python",
-                    "dependencies": [],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "train_model",
-                    "task_type": "python",
-                    "dependencies": ["prepare_training_data"],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "evaluate_model",
-                    "task_type": "python",
-                    "dependencies": ["train_model"],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "register_model",
-                    "task_type": "python",
-                    "dependencies": ["evaluate_model"],
-                    "parameters": {}
-                }
-            ]
-        }
-    
-    @staticmethod
-    def model_deployment_workflow() -> Dict[str, Any]:
-        """Template for model deployment workflow."""
-        return {
-            "dag_id": "model_deployment",
-            "default_args": {
-                "owner": "drift-ml",
-                "retries": 2,
-                "retry_delay_minutes": 5
-            },
-            "schedule_interval": None,  # Triggered manually
-            "tasks": [
-                {
-                    "task_id": "get_model_from_registry",
-                    "task_type": "python",
-                    "dependencies": [],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "validate_model",
-                    "task_type": "python",
-                    "dependencies": ["get_model_from_registry"],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "deploy_model",
-                    "task_type": "python",
-                    "dependencies": ["validate_model"],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "run_smoke_tests",
-                    "task_type": "python",
-                    "dependencies": ["deploy_model"],
-                    "parameters": {}
-                },
-                {
-                    "task_id": "update_model_status",
-                    "task_type": "python",
-                    "dependencies": ["run_smoke_tests"],
-                    "parameters": {}
-                }
-            ]
-        }
-
 # Example DAG for feature engineering workflow
 def create_feature_engineering_dag():
-    """
-    Create a DAG for feature engineering workflow.
+    """Create a DAG for feature engineering workflow."""
+    # Get configuration from WorkflowTemplates
+    config = WorkflowTemplates.feature_engineering()
     
-    Returns:
-        Airflow DAG
-    """
-    # Define default arguments
-    default_args = {
-        'owner': 'drift-ml',
-        'depends_on_past': False,
-        'start_date': days_ago(1),
-        'email_on_failure': False,
-        'email_on_retry': False,
-        'retries': 3,
-        'retry_delay': timedelta(minutes=5),
-    }
-    
-    # Create DAG
+    # Use the config to set up the DAG
     dag = DAG(
-        'feature_engineering',
-        default_args=default_args,
-        description='Feature engineering workflow',
-        schedule_interval='0 */6 * * *',  # Every 6 hours
-        catchup=False,
+        dag_id=config.name,
+        default_args={
+            "owner": "drift-ml",
+            "retries": 3,
+            "retry_delay": timedelta(minutes=5)
+        },
+        schedule_interval=config.schedule,
+        tags=config.tags
     )
     
     # Define tasks

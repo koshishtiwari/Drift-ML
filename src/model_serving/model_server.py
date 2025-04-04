@@ -701,6 +701,42 @@ class LocalModelServer:
         async def root():
             return {"message": "Drift-ML Local Model Server"}
         
+        @self.app.get("/health")
+        async def health():
+            """Health check endpoint for Kubernetes probes."""
+            try:
+                # Verify MLflow connection
+                if self.client:
+                    # Simple operation to test connection
+                    self.client.list_registered_models(max_results=1)
+                
+                # Check if we can load model info
+                is_healthy = True
+                detailed_status = {
+                    "mlflow_connection": "OK",
+                    "loaded_models": len(self.models),
+                    "system": "OK"
+                }
+                
+                # Add memory usage information
+                import psutil
+                process = psutil.Process()
+                memory_info = process.memory_info()
+                detailed_status["memory_usage_mb"] = memory_info.rss / (1024 * 1024)
+                
+                return {
+                    "status": "healthy" if is_healthy else "unhealthy",
+                    "details": detailed_status
+                }
+            except Exception as e:
+                logger.error(f"Health check failed: {e}")
+                return {
+                    "status": "unhealthy",
+                    "details": {
+                        "error": str(e)
+                    }
+                }
+        
         @self.app.get("/models")
         async def list_models(request: Request, user: Dict = Depends(self._get_current_user)):
             # Check permission if security is enabled
@@ -790,9 +826,9 @@ class LocalModelServer:
         @self.app.delete("/models/{model_name}/{model_version}")
         async def unload_model(
             model_name: str, 
-            model_version: str = "latest", 
             request: Request, 
-            user: Dict = Depends(self._get_current_user)
+            user: Dict = Depends(self._get_current_user), 
+            model_version: str = "latest"
         ):
             # Check permission if security is enabled
             if self.security:

@@ -1,0 +1,70 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: flink-taskmanager
+  labels:
+    app: drift-ml
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: drift-ml
+      component: data-processor
+  podMetricsEndpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: services-monitor
+  labels:
+    app: drift-ml
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: drift-ml
+  endpoints:
+  - port: http
+    interval: 15s
+    path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: drift-ml-alerts
+  labels:
+    app: drift-ml
+    component: monitoring
+spec:
+  groups:
+  - name: drift-ml.alerts
+    rules:
+    - alert: ModelServiceDown
+      expr: up{job="model-server"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Model service is down"
+        description: "The model service has been down for more than 1 minute."
+        
+    - alert: HighModelLatency
+      expr: histogram_quantile(0.95, sum(rate(model_prediction_latency_seconds_bucket[5m])) by (le, model_name, model_version)) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High model latency detected"
+        description: "95th percentile latency for model {{ $labels.model_name }} (v{{ $labels.model_version }}) is above 500ms"
+        
+    - alert: DataProcessingBackpressure
+      expr: rate(processing_lag_seconds[5m]) > 60
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Data processing backpressure detected"
+        description: "Processing lag is high, indicating backpressure in the data pipeline"

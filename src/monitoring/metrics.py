@@ -126,6 +126,31 @@ class ModelMetrics:
             ["model_name", "model_version"],
             registry=self.registry
         )
+        
+        # Backpressure metrics
+        self.queue_size = Gauge(
+            'model_request_queue_size',
+            'Number of requests in queue',
+            ['model_name', 'model_version']
+        )
+        
+        self.input_throughput = Counter(
+            'model_input_throughput_total',
+            'Number of input records processed',
+            ['model_name', 'model_version', 'source']
+        )
+        
+        self.output_throughput = Counter(
+            'model_output_throughput_total',
+            'Number of output records produced',
+            ['model_name', 'model_version', 'destination']
+        )
+        
+        self.processing_lag = Gauge(
+            'model_processing_lag_seconds',
+            'Lag between data arrival and processing',
+            ['model_name', 'model_version', 'stage']
+        )
     
     def _start_pusher(self) -> None:
         """Start a thread to periodically push metrics to the gateway."""
@@ -332,6 +357,55 @@ class ModelMetrics:
                 model_name=self.model_name,
                 model_version=self.model_version
             ).set(cpu_percent)
+    
+    def record_backpressure_metrics(
+        self,
+        queue_size: Optional[int] = None,
+        input_count: Optional[int] = None,
+        output_count: Optional[int] = None,
+        processing_lag: Optional[float] = None,
+        source: str = "default",
+        destination: str = "default",
+        stage: str = "default"
+    ) -> None:
+        """
+        Record backpressure-related metrics.
+        
+        Args:
+            queue_size: Current queue size
+            input_count: Number of input records
+            output_count: Number of output records
+            processing_lag: Lag in seconds between arrival and processing
+            source: Input source name
+            destination: Output destination name
+            stage: Processing stage name
+        """
+        if queue_size is not None:
+            self.queue_size.labels(
+                model_name=self.model_name,
+                model_version=self.model_version
+            ).set(queue_size)
+        
+        if input_count is not None:
+            self.input_throughput.labels(
+                model_name=self.model_name,
+                model_version=self.model_version,
+                source=source
+            ).inc(input_count)
+        
+        if output_count is not None:
+            self.output_throughput.labels(
+                model_name=self.model_name,
+                model_version=self.model_version,
+                destination=destination
+            ).inc(output_count)
+        
+        if processing_lag is not None:
+            self.processing_lag.labels(
+                model_name=self.model_name,
+                model_version=self.model_version,
+                stage=stage
+            ).set(processing_lag)
 
 class MetricsMiddleware:
     """

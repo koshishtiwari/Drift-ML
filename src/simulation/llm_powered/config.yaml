@@ -1,0 +1,124 @@
+# Configuration for LLM-powered data simulation
+# This file defines the simulation parameters and data generation options
+
+# Simulation general settings
+simulation:
+  seed: 42
+  output_path: "./data/simulated"
+  
+# LLM integration settings
+llm:
+  provider: "openai"  # openai, huggingface, local
+  model_name: "gpt-3.5-turbo"  # or any other model
+  temperature: 0.7
+  max_tokens: 1000
+  # If using local model, specify the path
+  local_model_path: null
+
+# Data generation settings
+data_generation:
+  # Number of samples to generate in each batch
+  batch_size: 100
+  # Total number of samples to generate
+  total_samples: 10000
+  # Frequency to introduce drift (in number of batches)
+  drift_frequency: 5
+  # Types of drift to simulate
+  drift_types:
+    - "concept_drift"  # Changes in the relationship between features and target
+    - "feature_drift"  # Changes in the statistical properties of features
+    - "covariate_shift"  # Changes in the distribution of input data
+  
+# Feature definitions - these will be passed to the LLM to guide data generation
+features:
+  # Numeric features
+  - name: "age"
+    type: "numeric"
+    range: [18, 80]
+    distribution: "normal"
+    mean: 35
+    std: 12
+    
+  - name: "income"
+    type: "numeric"
+    range: [20000, 200000]
+    distribution: "lognormal"
+    
+  - name: "spending_score"
+    type: "numeric"
+    range: [0, 100]
+    distribution: "uniform"
+    
+  # Categorical features
+  - name: "gender"
+    type: "categorical"
+    categories: ["male", "female", "non-binary"]
+    distribution: [0.48, 0.48, 0.04]
+    
+  - name: "education"
+    type: "categorical"
+    categories: ["high_school", "bachelors", "masters", "phd"]
+    distribution: [0.3, 0.4, 0.2, 0.1]
+    
+  - name: "location"
+    type: "categorical"
+    categories: ["urban", "suburban", "rural"]
+    
+  # Text features
+  - name: "product_review"
+    type: "text"
+    length_range: [20, 200]
+    sentiment_range: [0, 1]  # 0-negative, 1-positive
+    
+  # Timestamp features
+  - name: "transaction_time"
+    type: "timestamp"
+    start_date: "2023-01-01"
+    end_date: "2023-12-31"
+
+# Drift scenarios definition
+drift_scenarios:
+  - name: "age_distribution_shift"
+    feature: "age"
+    type: "feature_drift"
+    drift_params:
+      mean_shift: 10
+      std_multiplier: 1.5
+      
+  - name: "income_range_shift"
+    feature: "income"
+    type: "feature_drift"
+    drift_params:
+      range_shift: [50000, 250000]
+      
+  - name: "location_distribution_change"
+    feature: "location"
+    type: "feature_drift"
+    drift_params:
+      new_distribution: [0.6, 0.3, 0.1]  # urban, suburban, rural
+      
+  - name: "sentiment_shift"
+    feature: "product_review"
+    type: "concept_drift"
+    drift_params:
+      sentiment_shift: 0.3  # Shift sentiment average by this amount
+
+# Target variable definition
+target:
+  name: "purchase_amount"
+  type: "numeric"
+  range: [0, 5000]
+  distribution: "lognormal"
+  dependency:
+    - feature: "age"
+      relationship: "linear"
+      weight: 0.3
+    - feature: "income"
+      relationship: "linear"
+      weight: 0.5
+    - feature: "location"
+      relationship: "categorical_mapping"
+      mapping:
+        "urban": [500, 2000]
+        "suburban": [200, 1000]
+        "rural": [100, 800]
