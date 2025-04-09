@@ -1,5 +1,6 @@
-# Real-Time Data Streaming ML Platform for City Infrastructure
-<!-- city-ml-platform-design.md -->
+# Real-Time Data Streaming ML Platform
+
+<!--DESIGN.md -->
 
 ## 1. System Architecture Overview
 
@@ -28,214 +29,209 @@
 - **Sources**: Traffic sensors, environmental monitors, utility meters, etc.
 - **Protocol**: MQTT for lightweight messaging
 - **Ingestion Rate**: High-frequency, small payloads (ms to seconds)
-- **Simulator Component**:
 
-```python
-# IoT Sensor Data Simulator
-import paho.mqtt.client as mqtt
-import json
+```
+For now,
+**Simulator Component**:
+Use LLM to create simulated data
+
+import os
 import random
-import time
-from datetime import datetime
+import json
+import datetime
+from google import genai
 
-class IoTSensorSimulator:
-    def __init__(self, broker="localhost", port=1883):
-        self.client = mqtt.Client()
-        self.client.connect(broker, port, 60)
-        self.sensor_types = ["traffic", "air_quality", "noise", "temperature", "humidity"]
-        self.locations = ["downtown", "north_side", "south_side", "east_side", "west_side"]
-        
-    def generate_data(self):
-        sensor_type = random.choice(self.sensor_types)
-        location = random.choice(self.locations)
-        topic = f"city/sensors/{location}/{sensor_type}"
-        
-        if sensor_type == "traffic":
-            value = random.randint(0, 100)  # vehicles per minute
-        elif sensor_type == "air_quality":
-            value = random.uniform(0, 500)  # AQI
-        elif sensor_type == "noise":
-            value = random.uniform(30, 100)  # dB
-        elif sensor_type == "temperature":
-            value = random.uniform(-10, 40)  # Celsius
-        else:  # humidity
-            value = random.uniform(0, 100)  # %
-            
-        payload = {
-            "timestamp": datetime.now().isoformat(),
-            "sensor_id": f"{location}_{sensor_type}_{random.randint(1,10)}",
-            "type": sensor_type,
-            "location": location,
-            "value": value,
-            "unit": self._get_unit(sensor_type)
+def simulate_sensor_data():
+    """
+    Generates simulated IoT sensor data using random values.
+    The sensor can be one of the following types:
+      - Traffic sensor: vehicle_count, avg_speed, and location (lat, lon)
+      - Environmental monitor: temperature, humidity, air_quality_index
+      - Utility meter: consumption, voltage, current
+    """
+    sensor_category = random.choice(["traffic", "environment", "utility"])
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()    
+    if sensor_category == "traffic":
+        data = {
+            "type": "traffic",
+            "sensor_id": f"traffic_{random.randint(1, 5)}",
+            "timestamp": timestamp,
+            "vehicle_count": random.randint(0, 100),
+            "avg_speed": round(random.uniform(20, 80), 2),
+            "location": {
+                "lat": round(random.uniform(-90, 90), 4),
+                "lon": round(random.uniform(-180, 180), 4)
+            }
         }
-        
-        return topic, json.dumps(payload)
+    elif sensor_category == "environment":
+        data = {
+            "type": "environment",
+            "sensor_id": f"env_{random.randint(1, 5)}",
+            "timestamp": timestamp,
+            "temperature": round(random.uniform(-10, 40), 2),
+            "humidity": random.randint(20, 100),
+            "air_quality_index": random.randint(0, 500)
+        }
+    else:  # utility sensor
+        data = {
+            "type": "utility",
+            "sensor_id": f"utility_{random.randint(1, 5)}",
+            "timestamp": timestamp,
+            "consumption": round(random.uniform(0, 2000), 2),
+            "voltage": round(random.uniform(110, 240), 2),
+            "current": round(random.uniform(0, 50), 2)
+        }
+    return data
+
+def generate_sensor_data_with_llm():
+    """
+    Uses Google GenAI to generate a simulated IoT sensor JSON payload.
+    If the output cannot be parsed as valid JSON, it falls back to using random generation.
+    """
+    client = genai.Client()  # Ensure your API key is set via environment variables
+
+    prompt = (
+        "Generate a valid JSON object representing a simulated IoT sensor reading from one of these categories: "
+        "traffic sensor, environmental monitor, or utility meter. For a traffic sensor, include sensor_id (string), "
+        "timestamp (ISO 8601 format), vehicle_count (integer), avg_speed (float), and location (object with lat and lon as floats). "
+        "For an environmental monitor, include sensor_id, timestamp, temperature (float), humidity (integer), and air_quality_index (integer). "
+        "For a utility meter, include sensor_id, timestamp, consumption (float), voltage (float), and current (float). "
+        "Randomly choose one category and ensure the JSON is properly formatted."
+    )
+
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt
+    )
+
+    try:
+        sensor_json = json.loads(response.text)
+    except Exception as e:
+        print("LLM output parsing failed, falling back to random generation. Error:", e)
+        sensor_json = simulate_sensor_data()
     
-    def _get_unit(self, sensor_type):
-        units = {
-            "traffic": "vehicles/min",
-            "air_quality": "AQI",
-            "noise": "dB",
-            "temperature": "°C",
-            "humidity": "%"
-        }
-        return units.get(sensor_type, "unknown")
-        
-    def run(self, interval=1.0):
-        while True:
-            topic, payload = self.generate_data()
-            self.client.publish(topic, payload)
-            time.sleep(interval)
+    return sensor_json
+
+if __name__ == "__main__":
+    # Example: Generating simulated IoT sensor data using the random generator.
+    print("Simulated sensor data (random generation):")
+    random_data = simulate_sensor_data()
+    print(json.dumps(random_data, indent=4))
+    
+    print("\nSimulated sensor data (using LLM):")
+    llm_data = generate_sensor_data_with_llm()
+    print(json.dumps(llm_data, indent=4))
+
 ```
 
 ### 2.2 Market Data
 - **Sources**: Stock markets, commodities, real estate indices
 - **Protocol**: WebSockets for real-time data, REST API for historical
-- **Ingestion Rate**: Medium frequency (seconds to minutes)
-- **Simulator Component**:
-
-```python
-# Market Data Simulator
-import websockets
-import asyncio
-import json
-import random
-from datetime import datetime, timedelta
-
-class MarketDataSimulator:
-    def __init__(self, port=8765):
-        self.port = port
-        self.clients = set()
-        self.indices = ["CITY_INFRA", "REAL_ESTATE", "LOCAL_BUSINESS", "TOURISM"]
-        self.base_values = {idx: random.uniform(100, 1000) for idx in self.indices}
-        
-    async def register(self, websocket):
-        self.clients.add(websocket)
-        
-    async def unregister(self, websocket):
-        self.clients.remove(websocket)
-        
-    async def send_market_data(self):
-        while True:
-            data = []
-            for idx in self.indices:
-                # Simulate price movement
-                price_change = random.uniform(-0.5, 0.5) / 100  # -0.5% to +0.5%
-                self.base_values[idx] *= (1 + price_change)
-                
-                data.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "index": idx,
-                    "price": round(self.base_values[idx], 2),
-                    "change": round(price_change * 100, 2),
-                    "volume": random.randint(1000, 10000)
-                })
-            
-            if self.clients:
-                message = json.dumps({"type": "market_update", "data": data})
-                await asyncio.gather(
-                    *[client.send(message) for client in self.clients]
-                )
-            
-            await asyncio.sleep(5)  # Update every 5 seconds
-            
-    async def handler(self, websocket, path):
-        await self.register(websocket)
-        try:
-            await websocket.recv()  # Wait for messages
-        finally:
-            await self.unregister(websocket)
-            
-    async def run(self):
-        async with websockets.serve(self.handler, "localhost", self.port):
-            await self.send_market_data()
+- **Ingestion Rate**: High frequency (Real-time to Historical (1y/3y/5y/10y))
+```
+Use Alpaca API for real-time and historical US stocks
+Make it modular so that, we could add redundant/ fall back sources
 ```
 
-### 2.3 News Scraping
-- **Sources**: City news websites, social media, government announcements
+### 2.3 Web Scraping
+- **Sources**: Location based news websites, social media, government announcements
 - **Protocol**: HTTP/HTTPS
 - **Ingestion Rate**: Low frequency (minutes to hours)
 - **Simulator Component**:
 
 ```python
-# News Scraping Simulator
-import requests
-from bs4 import BeautifulSoup
-import time
-import json
-import random
-from datetime import datetime, timedelta
-import kafka
+Use agentic ai LLM to do web search
 
-class NewsScrapingSimulator:
-    def __init__(self, kafka_broker="localhost:9092", topic="city_news"):
-        self.producer = kafka.KafkaProducer(
-            bootstrap_servers=[kafka_broker],
-            value_serializer=lambda x: json.dumps(x).encode('utf-8')
-        )
-        self.topic = topic
-        self.sources = ["CityTimes", "MetroNews", "UrbanDaily", "LocalPost"]
-        self.categories = ["politics", "infrastructure", "events", "business", "environment"]
-        
-    def generate_article(self):
-        source = random.choice(self.sources)
-        category = random.choice(self.categories)
-        
-        # Generate random publish time in the last 24 hours
-        publish_time = datetime.now() - timedelta(hours=random.randint(0, 24))
-        
-        headlines = {
-            "politics": [
-                "Mayor announces new city council initiative",
-                "Budget approval for downtown renovation",
-                "New regulations for public transportation"
-            ],
-            "infrastructure": [
-                "Bridge renovation to begin next month",
-                "Smart traffic lights installed in downtown",
-                "New water management system proposal"
-            ],
-            "events": [
-                "Annual city festival dates announced",
-                "International conference to boost local tourism",
-                "Community cleanup event draws record participation"
-            ],
-            "business": [
-                "Local startup secures major investment",
-                "New shopping district opening delayed",
-                "Business tax incentives proposed for green initiatives"
-            ],
-            "environment": [
-                "City parks expansion project approved",
-                "Air quality improvement measures show results",
-                "Urban gardening initiative launches in residential areas"
-            ]
-        }
-        
-        headline = random.choice(headlines[category])
-        
-        article = {
-            "source": source,
-            "category": category,
-            "headline": headline,
-            "publish_time": publish_time.isoformat(),
-            "url": f"https://{source.lower().replace(' ', '')}.example.com/{category}/{headline.lower().replace(' ', '-')}",
-            "sentiment": random.choice(["positive", "neutral", "negative"]),
-            "relevance_score": round(random.uniform(0.1, 1.0), 2)
-        }
-        
-        return article
+Use this,
+
+%pip install -U -q google-genai requests
+
+import os
+import requests
+from google import genai
+
+def fetch_news(topic, api_key, page_size=5):
+    """
+    Fetches the latest news articles for a given topic using NewsAPI.
+    Returns a concatenated string with title, description, and URL for each article.
+    """
+    url = "https://newsapi.org/v2/everything"
+    params = {
+        "q": topic,
+        "pageSize": page_size,
+        "apiKey": api_key,
+        "language": "en"
+    }
+    response = requests.get(url, params=params)
     
-    def run(self, interval=3600):  # Default: scrape every hour
-        while True:
-            num_articles = random.randint(3, 10)  # Random number of new articles
-            
-            for _ in range(num_articles):
-                article = self.generate_article()
-                self.producer.send(self.topic, value=article)
-                
-            time.sleep(interval)
+    if response.status_code != 200:
+        raise Exception(f"News API returned error {response.status_code}: {response.text}")
+
+    data = response.json()
+    articles = data.get('articles', [])
+    
+    if not articles:
+        return "No articles found."
+    
+    collected_data = ""
+    for article in articles:
+        title = article.get("title", "No Title")
+        description = article.get("description", "No Description")
+        url = article.get("url", "No URL")
+        article_summary = f"Title: {title}\nDescription: {description}\nURL: {url}\n\n"
+        collected_data += article_summary
+    return collected_data
+
+def summarize_news(news_content, model="gemini-2.0-flash"):
+    """
+    Uses Google GenAI to summarize the fetched news content.
+    """
+    # Initialize the GenAI client (make sure your API key is properly configured in your environment)
+    client = genai.Client()
+
+    # Create a prompt asking the model to summarize the news content
+    prompt = (
+        "Summarize the following news articles for me in a concise, clear paragraph, "
+        "highlighting the main events and general sentiment:\n\n"
+        f"{news_content}\n"
+    )
+
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt
+    )
+
+    return response.text
+
+def main():
+    # Obtain the NewsAPI key from environment variables.
+    news_api_key = os.getenv("NEWS_API_KEY")
+    if not news_api_key:
+        print("Error: Please set the NEWS_API_KEY environment variable.")
+        return
+
+    # Ask the user for the news topic they are interested in.
+    topic = input("Enter a news topic: ")
+
+    print("\nFetching news articles...")
+    try:
+        news_content = fetch_news(topic, news_api_key)
+        print("News articles fetched:\n")
+        print(news_content)
+    except Exception as e:
+        print(f"An error occurred while fetching news: {e}")
+        return
+
+    print("\nSummarizing news with Google GenAI...\n")
+    try:
+        summary = summarize_news(news_content)
+        print("Summary of Latest News:")
+        print(summary)
+    except Exception as e:
+        print(f"An error occurred while summarizing news: {e}")
+
+if __name__ == "__main__":
+    main()
 ```
 
 ## 3. Data Processing & Flow
@@ -395,16 +391,16 @@ def calculate_quality_score(error_rates, expectations_results):
 ## 4. Storage Architecture
 
 ### 4.1 Time Series Database
-- **Technology**: InfluxDB / TimescaleDB / Amazon Timestream
+- **Technology**: questDB
 - **Purpose**: Store high-volume sensor data with efficient time-based queries
 - **Schema Design**:
   - Measurements: sensor readings
-  - Tags: sensor_id, location, type
+  - Tags: sensor_id, type,  location, time
   - Fields: value, metadata
-  - Retention policies: different for hot/warm/cold data
+  - Retention policies
 
 ### 4.2 Data Lake
-- **Technology**: Delta Lake / Apache Iceberg on S3/HDFS
+- **Technology**: Delta Lake
 - **Organization**:
   - Bronze layer: raw data
   - Silver layer: validated, cleansed data
@@ -415,7 +411,7 @@ def calculate_quality_score(error_rates, expectations_results):
   - Training data preparation
 
 ### 4.3 Feature Store
-- **Technology**: Feast / Tecton / SageMaker Feature Store
+- **Technology**: Feast
 - **Capabilities**:
   - Online/offline feature serving
   - Feature versioning
@@ -429,51 +425,8 @@ from feast import Entity, Feature, FeatureView, ValueType
 from feast.data_source import FileSource
 
 # Define entity
-sensor = Entity(
-    name="sensor_id",
-    value_type=ValueType.STRING,
-    description="Unique sensor identifier",
-)
-
 # Define data sources
-traffic_source = FileSource(
-    path="s3://city-data/traffic/",
-    event_timestamp_column="timestamp",
-)
-
-weather_source = FileSource(
-    path="s3://city-data/weather/",
-    event_timestamp_column="timestamp",
-)
-
 # Define feature views
-traffic_features = FeatureView(
-    name="traffic_features",
-    entities=["sensor_id"],
-    ttl=timedelta(days=30),
-    features=[
-        Feature(name="vehicle_count", dtype=ValueType.INT64),
-        Feature(name="average_speed", dtype=ValueType.FLOAT),
-        Feature(name="congestion_level", dtype=ValueType.STRING),
-    ],
-    online=True,
-    input=traffic_source,
-    tags={"team": "traffic_management"},
-)
-
-weather_features = FeatureView(
-    name="weather_features",
-    entities=["sensor_id"],
-    ttl=timedelta(days=7),
-    features=[
-        Feature(name="temperature", dtype=ValueType.FLOAT),
-        Feature(name="precipitation", dtype=ValueType.FLOAT),
-        Feature(name="wind_speed", dtype=ValueType.FLOAT),
-    ],
-    online=True,
-    input=weather_source,
-    tags={"team": "environmental"},
-)
 ```
 
 ## 5. ML Platform
@@ -847,7 +800,7 @@ class AlertManager:
 |-----------|--------------------------|
 | Data Ingestion | MQTT, Kafka, Websockets |
 | Stream Processing | Kafka Streams, Flink |
-| Storage | InfluxDB, Delta Lake, MongoDB |
+| Storage | questDB, Delta Lake, Redis |
 | ML Platform | MLflow, Kubeflow, Seldon |
 | Monitoring | Prometheus, Grafana, ELK |
 | Orchestration | Airflow, Kubernetes |
