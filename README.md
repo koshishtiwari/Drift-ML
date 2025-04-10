@@ -1,5 +1,38 @@
-# Drift-ML
-Streaming Data &amp; ML with Drift Detection
+# Drift-ML: Real-Time Data Streaming ML Platform
 
-GOOGLE_API_KEY="AIzaSyCRA63DBPd-4Nct59qfBwzCT83m4zdBsXY"
-NEWS_API_KEY="c7b2727ab89d4ce1a091d4934fdf4171"
+A platform for ingesting, processing, and analyzing real-time data streams with machine learning capabilities.
+
+## Features
+
+- Real-time data ingestion from multiple sources
+- Stream processing with drift detection
+- ML model training and serving
+- Monitoring and alerting
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.8+
+- Docker and Docker Compose
+
+### Installation
+
+1. Clone this repository
+2. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+
+## Project Structure
+
+- `src/`: Source code
+  - `data_sources/`: Data ingestion components
+  - `processing/`: Stream processing logic
+  - `storage/`: Data storage interfaces
+  - `ml/`: Machine learning components
+  - `monitoring/`: System monitoring
+- `config/`: Configuration files
+- `tests/`: Test cases
+
+

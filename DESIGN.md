@@ -35,6 +35,9 @@ For now,
 **Simulator Component**:
 Use LLM to create simulated data
 
+%pip install -U -q "google-genai>=1.0.0"
+
+
 import os
 import random
 import json
@@ -392,7 +395,7 @@ def calculate_quality_score(error_rates, expectations_results):
 
 ### 4.1 Time Series Database
 - **Technology**: questDB
-- **Purpose**: Store high-volume sensor data with efficient time-based queries
+- **Purpose**: Store high-volume data with efficient time-based queries
 - **Schema Design**:
   - Measurements: sensor readings
   - Tags: sensor_id, type,  location, time

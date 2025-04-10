@@ -1,0 +1,96 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+
+# Cache
+.cache/
+*.cache
+
+# Logs
+logs/
+*.log
+
+# Data files (if they're large or sensitive)
+data/
+datasets/
+*.csv
+*.parquet
+*.pkl
+
+# Model files (if they're large)
+models/
+*.h5
+*.pb
+*.pt
+*.pth
+*.joblib
+*.onnx
+
+# Mac OS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# IDE specific files
+.idea/
+.spyderproject
+.spyproject
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# MLflow
+mlruns/
+
+# TensorBoard
+runs/
+
+# DVC
+.dvc/
+
+# Weights & Biases
+wandb/
+
+# Delta Lake
+_delta_log/
+
+# Spark
+spark-warehouse/
+metastore_db/
+
+# Docker related
+.docker/
